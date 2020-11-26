@@ -1,0 +1,1 @@
+/usr/bin/g++ -fPIC   -shared -Wl,-soname,libFFComm.so -o libFFComm.so CMakeFiles/FFComm.dir/CNCSCommClient.cpp.o CMakeFiles/FFComm.dir/FFComm.cpp.o CMakeFiles/FFComm.dir/FFCommManager.cpp.o 

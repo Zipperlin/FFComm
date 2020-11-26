@@ -1,0 +1,3 @@
+/home/linxiaoba/MyPro/ffcfg_cncs/FFComm/build/CMakeFiles/rebuild_cache.dir
+/home/linxiaoba/MyPro/ffcfg_cncs/FFComm/build/CMakeFiles/edit_cache.dir
+/home/linxiaoba/MyPro/ffcfg_cncs/FFComm/build/CMakeFiles/FFComm.dir
