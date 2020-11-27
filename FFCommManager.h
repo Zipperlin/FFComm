@@ -8,6 +8,7 @@ using namespace std;
 #include "CNCSCommClient.h"
 #include "MIB.H"
 #include "FFComm.h"
+#include "CIniManager.h"
 
 //////////////////////////////////////////////////////////////////////////
 // 
@@ -667,6 +668,8 @@ public:
 	static int fms_init_retry_count() { return m_fms_init_retry_count; }
 
 private:
+    static int GetModuleFileName( char* sModuleName, char* sFileName, int nSize);
+
 	static bool init();
 	static bool m_initialized;
 
@@ -681,5 +684,6 @@ private:
 
 	// fms_init_retry_count
 	static int m_fms_init_retry_count;
+    static CIniManager m_IniManager;
 };
 

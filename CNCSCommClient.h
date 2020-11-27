@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <iostream>
 #include <semaphore.h>
+#include <unistd.h>
 using namespace std;
 
 #include "FFDef.h"
@@ -113,7 +114,7 @@ enum CTRL_ERR_CODE
 #define SLAVE_ADDR_CONTROLLER  0
 
 #define MAX_DATA_LEN_NON_TRANSPARENT	1400
-#define MAX_DATA_LEN_TRANSPARENT		230
+#define MAX_DATA_LEN_TRANSPARENT		255
 #define MAX_COMM_DATA_BUFFER			1400
 
 #define ORDINAL_SINGLE_PACKET		0
@@ -152,13 +153,8 @@ class TransactionInfo
 public:
 	TransactionInfo();
 	~TransactionInfo();
-//	bool is_used() { return m_used; }
-//	void set_used(bool b = true) { m_used = b; }
-//	CRITICAL_SECTION* get_critical_section() { return &m_cs; }
+
     sem_t* get_sem() { return &m_sem; }
-//	char* get_buffer() { return m_recv_buf; }
-//	void set_data_len(uint16 len) { m_data_len = len; }
-//	uint16 get_data_len() { return m_data_len; }
 
 	void init();
 	void reset();
@@ -237,11 +233,12 @@ public:
             int16 comm_ref);
 
 	// 非透传请求，并等待回应
-	int request_cncs_store_cfg(
-		uint8 slot_index,
-		char* cfg_data,
-		uint32 data_len
-		);
+    // comment by linzhd
+//	int request_cncs_store_cfg(
+//		uint8 slot_index,
+//		char* cfg_data,
+//		uint32 data_len
+//		);
 
 	int request_cncs_load_cfg(
 		uint8 slot_index,
@@ -284,38 +281,41 @@ public:
 
 private:
 	void do_recv();
+    int handle_packet(char* pkt_data, int pkt_len);
     static void* thread_recv_from_controller(void* p);
+
+    int multiple_sem_wait(sem_t *sems, int num_sems,unsigned long timeout);
 
 	uint8 m_dpu_addr;
 	CNCS_TRANS_MODE m_cncs_trans_mode;
 	
 	// IP address: 0/1: network 1/2
 	string m_local_ip[2];
-        unsigned long m_ctrl_ip_master[2];
-        unsigned long  m_ctrl_ip_slave[2];
-        struct sockaddr_in m_target_addr_master;
-        struct sockaddr_in m_target_addr_slave;
+    in_addr_t m_ctrl_ip_master[2];
+    in_addr_t  m_ctrl_ip_slave[2];
+    struct sockaddr_in m_target_addr_master;
+    struct sockaddr_in m_target_addr_slave;
 
-        int m_socket;
+    int m_socket;
 
-//	CNCS_REDUNDANT_MODE m_redundant_mode;
 	bool m_redundant_enabled;
 
 	bool m_master_slave_enabled;
 	bool m_using_master;
 
 	uint16 m_udp_port;
-//	uint8 m_slot_index;
 
 	uint8 m_protocol_revision;
 
 	uint8 m_current_trans_id;
-        pthread_mutex_t m_cs_trans_id;
+    pthread_mutex_t m_cs_trans_id;
 
 	map<uint8, TransactionInfo*> m_trans_map;
 
 	uintptr_t m_recv_thread_handle;
-    //    void* m_exit_ev_handle;
+
+    sem_t m_mysem;
+    sem_t m_exit_ev_sem;
 
 	MODULE_NOTIFY_HANDLER m_pfn_module_notify_handler;
 
@@ -323,7 +323,6 @@ private:
     static uint32 TIMEOUT_CTRL_RESPONSE;
     timespec timmeout_ctrl_checksum;
     timespec timmeout_ctrl_response;
-//	static uint32 TIMEOUT_MODULE_RESPONSE;
 
 	static bool USE_H1_INVOKE_ID_AS_IDENTIFIER;
 };

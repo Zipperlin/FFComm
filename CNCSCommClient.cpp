@@ -5,11 +5,10 @@
 
 // CRC checksum
 #define POLY16_CCITT 0x1021  // 该位为简式书写 实际为0x11021
-
-#define MAKEWORD(a, b)      ((unsigned int)(((char)(((unsigned long*)(a)) & 0xff)) | ((unsigned int)((char)(((unsigned long*)(b)) & 0xff))) << 8))
-#define MAKELONG(a, b)      ((long)(((unsigned int)(((unsigned long*)(a)) & 0xffff)) | ((unsigned long)((unsigned int)(((unsigned long*)(b)) & 0xffff))) << 16))
+#define PROTOCOL_BUF_LENGTH		512
 
 uint16 g_CRCTable[256];
+
 static uint16 CalCRCTable(uint16 data, uint16 genpoly)
 {
 	uint16 accum = 0;
@@ -55,9 +54,9 @@ TransactionInfo::TransactionInfo()
 	m_state = TRANS_IDLE;
     pthread_mutex_init(&m_cs,NULL);
 	// auto-reset event
-    //m_event = event_create(NULL, false, false, NULL);
     int ret=sem_init(&m_sem,0,0);
-    if(ret){
+    if(ret)
+    {
         cout<<"init sem failed!"<<endl;
     }
 }
@@ -132,7 +131,7 @@ CNCSCommClient::CNCSCommClient(void)
 	m_current_trans_id = 1; // 1 - 255
 	m_recv_thread_handle = NULL;
     //m_exit_ev_handle = ::CreateEvent(NULL, TRUE, FALSE, NULL);
-	m_cncs_trans_mode = MODE_NON_CYCLE;
+    set_trans_mode(MODE_NON_CYCLE);
 	m_pfn_module_notify_handler = NULL;
 
     timmeout_ctrl_checksum.tv_nsec=TIMEOUT_CTRL_CHECKSUM*1000;
@@ -144,7 +143,7 @@ CNCSCommClient::CNCSCommClient(void)
 CNCSCommClient::~CNCSCommClient(void)
 {
     if (m_socket >0) {
-        m_socket=SOCK_NONBLOCK;
+        close(m_socket);
 	}
 
     pthread_mutex_destroy(&m_cs_trans_id);
@@ -180,79 +179,29 @@ int CNCSCommClient::initialize(
 	}
 
 	m_dpu_addr = dpu_addr;
-    //m_ctrl_ip_master[0] = MAKELONG(MAKEWORD(192, 168), MAKEWORD(net1, dpu_addr));
-    //m_ctrl_ip_master[0] = m_ctrl_ip_master[0] = MAKELONG(MAKEWORD(192, 168), MAKEWORD(net1, dpu_addr));;
+    string strnet1=to_string(net1);
+    string strdpuaddr=to_string(dpu_addr);
+    string strIP="192.168."+strnet1+"."+strdpuaddr;
+    m_ctrl_ip_master[0] = inet_addr(strIP.c_str());
 	m_redundant_enabled = redundant_enabled;
-
-// 	if (ip_slave != NULL && strlen(ip_slave) > 0) {
-// 		m_master_slave_enabled = true;
-// 	}
-// 	m_ctrl_ip_slave = ip_slave;
-
 	m_udp_port = udp_port;
-
-//    WSADATA wsa_data;
-//	int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-//	if (result != NO_ERROR) {
-//	//	wprintf(L"WSAStartup failed with error %d\n", result);
-//		return FF_ERR_SOCKET_ERROR;
-//	}
-
-//	if (m_socket != INVALID_SOCKET) {
-//		closesocket(m_socket);
-//	}
 
     m_socket=socket(AF_INET,SOCK_STREAM,0);
     if(m_socket==-1){
         return 0;
     }
 
-    struct sockaddr_in my_addr;
-    struct sockaddr_in their_addr;
-
-//	m_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-#define PROTOCOL_BUF_LENGTH		512
-    sockaddr_in info[PROTOCOL_BUF_LENGTH];
-    unsigned long count = sizeof(sockaddr_in) * PROTOCOL_BUF_LENGTH;
-//	int nProtNum = WSAEnumProtocols( NULL, info, &count );
-//	if ( nProtNum == SOCKET_ERROR ) {
-//		return FF_ERR_SOCKET_ERROR;
-//	}
-
-//	int i = 0;
-//	for (; i < nProtNum; i++) {
-//		if( info[i].iSocketType == SOCK_DGRAM  &&
-//			info[i].iAddressFamily == AF_INET  &&
-//			info[i].iProtocol == IPPROTO_UDP &&
-//			(info[i].dwServiceFlags1 & XP1_SUPPORT_MULTIPOINT) != 0  &&
-//			(info[i].dwServiceFlags1 & XP1_MULTIPOINT_CONTROL_PLANE) == 0  &&
-//			(info[i].dwServiceFlags1 & XP1_MULTIPOINT_DATA_PLANE) == 0  &&
-//			(info[i].dwServiceFlags1 & XP1_QOS_SUPPORTED ) == 0	 )
-//		{
-//			break;
-//		}
-//	}
-//	m_socket = WSASocket(
-//		AF_INET, SOCK_DGRAM, IPPROTO_UDP,
-//		&info[i], NULL,
-//		WSA_FLAG_OVERLAPPED | WSA_FLAG_MULTIPOINT_C_LEAF | WSA_FLAG_MULTIPOINT_D_LEAF);
-
-    int listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    int m_socket = socket(AF_INET, SOCK_STREAM, 0);
 
     if (m_socket <0) {
         return 0;
 	}
 
-    //memset((char*)&m_target_addr_master, 0, sizeof(m_target_addr_master));
-
     memset(&m_target_addr_master,0,sizeof(m_target_addr_master));
 
 	m_target_addr_master.sin_family = AF_INET;
 	m_target_addr_master.sin_port = htons(m_udp_port);
-    //m_target_addr_master.sin_addr.s_addr = m_ctrl_ip_master[0];
-
-    m_target_addr_master.sin_addr.s_addr = htonl(INADDR_ANY);
-
+    m_target_addr_master.sin_addr.s_addr = htonl(m_ctrl_ip_master[0]);
 
 	sockaddr_in sa_local;
 	sa_local.sin_family = AF_INET;
@@ -265,18 +214,8 @@ int CNCSCommClient::initialize(
         return false;
 	}
 
-// 	if (m_master_slave_enabled) {
-// 		memset((char*)&m_target_addr_slave, 0, sizeof(m_target_addr_master));
-// 		m_target_addr_slave.sin_family = AF_INET;
-// 		m_target_addr_slave.sin_port = htons(port);
-// 		m_target_addr_slave.sin_addr.s_addr = inet_addr(ip_slave);
-// 	}
-
 	// 启动数据接收线程
 	uint32 _addr = 0;
-//	m_recv_thread_handle = _beginthreadex(NULL, 0, thread_recv_from_controller,
-//		this, 0, &_addr);
-
     pthread_t mythread;
     int ret=pthread_create(&mythread,NULL,thread_recv_from_controller,&_addr);
     if(ret!=0){
@@ -506,15 +445,29 @@ int CNCSCommClient::request_ff_h1(
 	return FF_SUCCESS;
 }
 
+int CNCSCommClient::multiple_sem_wait(sem_t *sems, int num_sems,unsigned long timeout)
+{
+   while (true) {
+      for (int i = 0; i < num_sems; ++i) {
+         if (sem_trywait(&sems[i]) == 0) {
+            return i;
+         }
+      }
+   }
+}
+
 void CNCSCommClient::do_recv()
 {
-//	WSAOVERLAPPED ol_data;
+    //WSACreateEvent ol_data;
 //	ol_data.hEvent = ::WSACreateEvent();
-//	WSAEVENT event_array[2] =
-//	{
-//		ol_data.hEvent,
-//		m_exit_ev_handle,
-//	};
+
+    int ret=sem_init(&m_mysem,0,0);
+    ret=sem_init(&m_exit_ev_sem,0,0);
+    sem_t event_array[2] =
+    {
+        m_mysem,
+        m_exit_ev_sem,
+    };
 
 	for (;;) {
 //        char cncs_pkt_buf[MAX_DATA_LEN_NON_TRANSPARENT];
@@ -522,75 +475,68 @@ void CNCSCommClient::do_recv()
 //		wsaBuf.len = MAX_DATA_LEN_NON_TRANSPARENT;
 //		wsaBuf.buf = cncs_pkt_buf;
 
-        char buf[512];
+        char cncs_pkt_buf[MAX_DATA_LEN_NON_TRANSPARENT];;
 
 		struct sockaddr_in  sa_from;
         int nFromLen = sizeof(sa_from);
         unsigned long cncs_pkt_len = 0;
         unsigned long __flag = 0;
 
-// 		int len = recvfrom(m_socket, szBuf, MAX_DATA_LEN_NON_TRANSPARENT, 0,
-// 			(struct sockaddr *)&sa_from, &nFromLen);
 
-//		int ret = WSARecvFrom(m_socket, &wsaBuf, 1, &cncs_pkt_len, &__flag,
-//			(struct sockaddr *)&sa_from, &nFromLen, &ol_data, NULL);
+        int ret  =  recv(m_socket,  cncs_pkt_buf,  sizeof(cncs_pkt_buf),  0);
 
-        int ret  =  recv(m_socket,  buf,  sizeof(buf),  0);
-
-        if ( (ret <0))
+        if ( (ret <=0))
 		{
-		//	ATLTRACE("WSARecvFrom error: %d. \r\n", WSAGetLastError());
 			break;
 		}
 
-//        unsigned long dwWaitRes = WSAWaitForMultipleEvents(
-//			2, event_array, FALSE, INFINITE, FALSE);
-
-//		if( dwWaitRes == WSA_WAIT_EVENT_0 ) { // data packet
+        int dwWaitRes = multiple_sem_wait(event_array,2,10000000);
+        if( dwWaitRes == 0 ) { // data packet
+            bool get_result=true;
 //            bool get_result = WSAGetOverlappedResult(
 //                m_socket, &ol_data, &cncs_pkt_len, true, &__flag );
-//			if (get_result) {
-//				CNCS_HEADER* cncs_header = (CNCS_HEADER*)cncs_pkt_buf;
-//				uint8 key_id = cncs_header->trans_id;
-//				if (USE_H1_INVOKE_ID_AS_IDENTIFIER &&
-//					(cncs_header->cmd == PKT_CMD_CTRL_RSP))
-//				{
-//					// NOTE:
-//					//  这里解析了传输数据中的FF信息，从结构上讲不合适，但目前只能这样，
-//					//  否则无法匹配数据包。
-//					//
-//					// FF模块回应的数据，需要忽略CNCS_HEADER中的trans_id，使用FF数据包中的invoke_id
-//					FF_HEADER* ff_header = (FF_HEADER*)((char*)cncs_pkt_buf + sizeof(CNCS_HEADER));
-//					key_id = ff_header->invoke_id;
-//					if (ff_header->service == FMS_ABORT &&
-//						m_trans_map.find(key_id) != m_trans_map.end()) {
-//						TransactionInfo* tr_inf = m_trans_map[key_id];
-//						if (tr_inf->get_state() == TRANS_IDLE) {
-//							// FF模块主动发送的Abort请求, 需要上层处理
-//							on_module_notify(cncs_header,
-//								(char*)cncs_pkt_buf + sizeof(CNCS_HEADER),
-//								cncs_pkt_len - sizeof(CNCS_HEADER));
-//						}
-//					}
-//				}
-//				if (m_trans_map.find(key_id) == m_trans_map.end()) {
-//				//	assert(false);
-//				//	break;
-//					// TODO: LOG UNKNOWN PACKET
-//				} else {
-//					TransactionInfo* tr_inf = m_trans_map[key_id];
-//					tr_inf->fill_data(cncs_pkt_buf, cncs_pkt_len);
-//				}
-//			} else {
-//				// TODO: log error
-//			// break;
-//			}
-//		} else if (dwWaitRes == (WSA_WAIT_EVENT_0 + 1)) { // exit event
-//			break;
-//		} else {
-//			assert(false);
-//			break;
-//		}
+            if (get_result) {
+                CNCS_HEADER* cncs_header = (CNCS_HEADER*)cncs_pkt_buf;
+                uint8 key_id = cncs_header->trans_id;
+                if (USE_H1_INVOKE_ID_AS_IDENTIFIER &&
+                    (cncs_header->cmd == PKT_CMD_CTRL_RSP))
+                {
+                    // NOTE:
+                    //  这里解析了传输数据中的FF信息，从结构上讲不合适，但目前只能这样，
+                    //  否则无法匹配数据包。
+                    //
+                    // FF模块回应的数据，需要忽略CNCS_HEADER中的trans_id，使用FF数据包中的invoke_id
+                    FF_HEADER* ff_header = (FF_HEADER*)((char*)cncs_pkt_buf + sizeof(CNCS_HEADER));
+                    key_id = ff_header->invoke_id;
+                    if (ff_header->service == FMS_ABORT &&
+                        m_trans_map.find(key_id) != m_trans_map.end()) {
+                        TransactionInfo* tr_inf = m_trans_map[key_id];
+                        if (tr_inf->get_state() == TRANS_IDLE) {
+                            // FF模块主动发送的Abort请求, 需要上层处理
+                            on_module_notify(cncs_header,
+                                (char*)cncs_pkt_buf + sizeof(CNCS_HEADER),
+                                cncs_pkt_len - sizeof(CNCS_HEADER));
+                        }
+                    }
+                }
+                if (m_trans_map.find(key_id) == m_trans_map.end()) {
+                //	assert(false);
+                //	break;
+                    // TODO: LOG UNKNOWN PACKET
+                } else {
+                    TransactionInfo* tr_inf = m_trans_map[key_id];
+                    tr_inf->fill_data(cncs_pkt_buf, cncs_pkt_len);
+                }
+            } else {
+                // TODO: log error
+            // break;
+            }
+        } else if (dwWaitRes == 1) { // exit event
+            break;
+        } else {
+            assert(false);
+            break;
+        }
     }
 }
 

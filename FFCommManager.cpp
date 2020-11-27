@@ -1,9 +1,11 @@
 #include "MIB.H"
 #include "FFCommManager.h"
 
+#define MAKELONG(a, b)      ((long)(((unsigned int)(((unsigned long)(a)) & 0xffff)) | ((unsigned long)((unsigned int)(((unsigned long)(b)) & 0xffff))) << 16))
+#define MAKEWORD(a, b)      ((unsigned int)(((char)(((unsigned long)(a)) & 0xff)) | ((unsigned int)((char)(((unsigned long)(b)) & 0xff))) << 8))
+
 FFCommManager::FFCommManager(void)
 {
-//	m_comm_type = COMM_UNDEFINED;
 }
 
 FFCommManager FFCommManager::m_comm_mgr;
@@ -67,10 +69,7 @@ FF_MODULE_HANDLE FFCommManager::open_module(
 		m_map_cncs_client[dpu_addr] = cncs_client;
 	}
 
-    //FF_MODULE_HANDLE h_cncs = (FF_MODULE_HANDLE)MAKELONG(dpu_addr, module_index);
-    long addr=0;
-    FF_MODULE_HANDLE h_cncs = (FF_MODULE_HANDLE)addr;
-
+    FF_MODULE_HANDLE h_cncs = (FF_MODULE_HANDLE)MAKELONG(dpu_addr, module_index);
 	if (m_map_h1module.find(h_cncs) != m_map_h1module.end()) {
 		return h_cncs;
 	}
@@ -84,18 +83,64 @@ FF_MODULE_HANDLE FFCommManager::open_module(
 	return h_cncs;
 }
 
+int FFCommManager::GetModuleFileName( char* sModuleName, char* sFileName, int nSize)
+{
+ int ret = -1;
+ if( strchr( sModuleName,'/' ) != NULL )
+  strcpy( sFileName, sModuleName );
+ else
+ {
+  char* sPath = getenv("PATH");
+  char* pHead = sPath;
+  char* pTail = NULL;
+  while( pHead != NULL && *pHead != '\x0' )
+  {
+   pTail = strchr( pHead, ':' );
+   if( pTail != NULL )
+   {
+    strncpy( sFileName, pHead, pTail-pHead );
+    sFileName[pTail-pHead] = '\x0';
+    pHead = pTail+1;
+   }
+   else
+   {
+    strcpy( sFileName, pHead );
+    pHead = NULL;
+   }
+
+   int nLen = strlen(sFileName);
+   if( sFileName[nLen] != '/' )sFileName[nLen] = '/';
+   strcpy( sFileName+nLen+1,sModuleName);
+   if( 0 == access( sFileName, F_OK ) )
+   {
+    ret = 0;
+    break;
+   }
+  }
+ }
+ return ret;
+}
+
 bool FFCommManager::init()
 {
     char szPath[MAX_PATH];
-//	if (::GetModuleFileName(NULL, szPath, MAX_PATH) == 0) {
-//        //unsigned long dwErr = ::errno();
-//		assert(false);
-//		return false;
-//	}
+    if (GetModuleFileName(NULL, szPath, MAX_PATH) == 0) {
+        //unsigned long dwErr = ::errno();
+        assert(false);
+        return false;
+    }
 
 	char* pos = strrchr(szPath, '\\');
 	pos[0] = 0;
 	strcat(szPath, "\\conf\\cfg-comm.ini");
+
+
+    //m_fms_init_retry_count = ::GetPrivateProfileInt("FF_SETTINGS", "fms_init_retry_count", 0, szPath);
+
+    m_fms_init_retry_count=0;
+    m_IniManager.OpenFile(szPath,"r");
+    m_fms_init_retry_count = m_IniManager.GetInt("FF_SETTINGS","fms_init_retry_count");
+
     //m_fms_init_retry_count = ::GetPrivateProfileInt("FF_SETTINGS", "fms_init_retry_count", 0, szPath);
 	
 	m_initialized = true;
@@ -109,12 +154,7 @@ void FFCommManager::handle_module_notify(
 	uint8& err_sign,
 	CTRL_ERR_CODE& err_code)
 {
-    //FF_MODULE_HANDLE h_cncs = (FF_MODULE_HANDLE)MAKELONG(cncs_header->dpu_addr, cncs_header->slave_addr);
-
-    long addr=0;
-    FF_MODULE_HANDLE h_cncs = (FF_MODULE_HANDLE)addr;
-
-
+    FF_MODULE_HANDLE h_cncs = (FF_MODULE_HANDLE)MAKELONG(cncs_header->dpu_addr, cncs_header->slave_addr);
 	FF_H1Module* ff_module = FFCommManager::inst().get_module(h_cncs);
 	if (ff_module == NULL) {
 		FF_LOG("Î´ÖªµÄFFÄ£¿é£º DPU=%d, ADDR=%x", cncs_header->dpu_addr, cncs_header->slave_addr);
